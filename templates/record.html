@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamGuard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Header Styles */
+        header {
+            width: 100%;
+            background-color: #333;
+            color: white;
+            padding: 15px 0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        nav {
+            display: flex;
+            gap: 20px;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-size: 16px;
+            transition: color 0.3s ease;
+        }
+
+        nav a:hover {
+            color: #ddd;
+        }
+
+        /* Video Container */
+        #videoContainer {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+            max-width: 800px;
+            width: 100%;
+            margin-top: 30px;
+        }
+
+        /* Buttons */
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Screenshot Container */
+        #cropperContainer {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            overflow: hidden;
+            position: relative;
+            margin: 0 auto;
+            background-color: #e9e9e9;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        #screenshotCanvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-container">
+            <div class="header-title">StreamGuard</div>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/record">Go on Recording</a>
+                <button onclick="handleLogout(event)">Logout</button>
+            </nav>
+        </div>
+    </header>
+
+    <div id="videoContainer">
+        <h1>Video Player</h1>
+        <video id="videoElement" width="640" height="360" controls>
+            <source src="static/output_video.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+
+        <br><br>
+
+        <button id="screenshotButton">Take Screenshot</button>
+        <button id="cropButton" style="display:none;">Tag</button>
+
+        <h2>Screenshot:</h2>
+        <div id="cropperContainer">
+            <canvas id="screenshotCanvas"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    <script>
+
+        function handleLogout(event) {
+            event.preventDefault();
+            fetch('/logout', {
+            method: 'GET', 
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.href = '/login';
+
+            } else {
+                alert('Logout failed. Please try again.');
+            }
+        })
+        .catch(error => {
+            console.error('Error during logout:', error);
+            alert('An error occurred. Please try again.');
+        });
+
+        }
+
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('screenshotCanvas');
+        const screenshotButton = document.getElementById('screenshotButton');
+        const cropButton = document.getElementById('cropButton');
+        const context = canvas.getContext('2d');
+        let cropper;
+
+        function adjustCanvasSize() {
+            canvas.width = video.videoWidth / 2;
+            canvas.height = video.videoHeight / 2;
+        }
+        
+        screenshotButton.addEventListener('click', () => {
+            adjustCanvasSize();
+
+            // Draw the video frame to the canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            cropButton.style.display = 'inline'; // Show the crop button
+
+            // Initialize CropperJS on the canvas
+            if (cropper) cropper.destroy(); // Destroy previous instance if it exists
+
+            cropper = new Cropper(canvas, {
+                aspectRatio: NaN, // Allows free cropping
+                viewMode: 1,
+                background: false,
+                autoCropArea: 1,
+                ready() {
+                cropButton.addEventListener('click', async () => {
+                // Get the cropped canvas
+                const croppedCanvas = cropper.getCroppedCanvas();
+
+                // Convert cropped canvas to a Blob
+                croppedCanvas.toBlob(async (blob) => {
+
+                    const formData = new FormData();
+                    formData.append('image', blob, 'snapshot.png');
+
+                    try {
+                        // Send the image to the backend
+                        const response = await fetch('/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (response.ok) {
+                            alert('Image uploaded successfully!');
+                        } else {
+                            alert('Failed to upload image.');
+                        }
+
+                    } 
+                    catch (error) {
+                        console.error('Error uploading image:', error);
+                        alert('Error uploading image.');
+                    }
+                }, 'image/png');
+    });
+}
+
+            });
+        });
+    </script>
+</body>
+</html>
